@@ -1,0 +1,50 @@
+services:
+  backup:
+    image: mariadb:11
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        while true; do
+          F=/backups/dump-$$(date +%F_%H%M%S).sql
+          if mariadb-dump -h db -u root -p"$$(cat /run/secrets/db_root_password)" --single-transaction --all-databases > "$$F" && [ -s "$$F" ]; then
+            gzip -f "$$F"
+            echo "OK $$F.gz"
+          else
+            echo "ECHEC dump, nouvel essai dans 60 s"
+            rm -f "$$F"
+            sleep 60
+            continue
+          fi
+          find /backups -name 'dump-*.sql.gz' -mtime +7 -delete
+          sleep 3600
+        done
+    secrets:
+      - db_root_password
+    volumes:
+      - backups:/backups
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      restart_policy:
+        condition: any
+
+networks:
+  backend:
+    external: true
+    name: swarm_backend
+
+secrets:
+  db_root_password:
+    external: true
+
+volumes:
+  backups:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=192.168.109.20,rw,nfsvers=4"
+      device: ":/srv/nfs/backups"

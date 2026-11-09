@@ -1,0 +1,31 @@
+services:
+  registry:
+    image: registry:2
+    ports:
+      - "5000:5000"
+    environment:
+      REGISTRY_HTTP_TLS_CERTIFICATE: /run/secrets/registry_crt
+      REGISTRY_HTTP_TLS_KEY: /run/secrets/registry_key
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry
+      REGISTRY_AUTH_HTPASSWD_PATH: /run/secrets/registry_htpasswd
+    secrets: [registry_crt, registry_key, registry_htpasswd]
+    volumes:
+      - registry_data:/var/lib/registry
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == worker]
+      restart_policy:
+        condition: any
+secrets:
+  registry_crt: {external: true}
+  registry_key: {external: true}
+  registry_htpasswd: {external: true}
+volumes:
+  registry_data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=192.168.109.20,rw,nfsvers=4"
+      device: ":/srv/nfs/registry"

@@ -1,0 +1,16 @@
+# Secrets et matériel cryptographique : ne jamais versionner
+swarm-private/
+*.key
+*.srl
+*.csr
+*.crt
+htpasswd
+.registry-pass
+.env
+
+# Sauvegardes et fichiers temporaires
+*.bak
+*.sql
+*.sql.gz
+swarm-state-*.tar.gz
+*.log

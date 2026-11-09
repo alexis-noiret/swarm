@@ -1,0 +1,29 @@
+services:
+  code:
+    image: codercom/code-server:latest
+    entrypoint: ["sh", "-c", "PASSWORD=$$(cat /run/secrets/code_password) exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8080 /home/coder/project"]
+    ports:
+      - "8443:8080"
+    secrets:
+      - code_password
+    volumes:
+      - code:/home/coder/project
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      restart_policy:
+        condition: any
+
+secrets:
+  code_password:
+    external: true
+
+volumes:
+  code:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=192.168.109.20,rw,nfsvers=4"
+      device: ":/srv/nfs/code"
