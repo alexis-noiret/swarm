@@ -174,12 +174,32 @@ swarm/
 
 ## 🎓 Compétences démontrées
 
-- **Orchestration** : déployer et exploiter un cluster Docker Swarm multi-nœuds (managers, workers, overlay, stacks, secrets, contraintes de placement).
-- **Conteneurisation** : construire une image applicative, la publier dans une registry interne et la déployer depuis celle-ci.
-- **Haute disponibilité** : répliquer les services, comprendre le quorum Raft et le routing mesh, assumer les limites d'une base en basculement.
-- **Continuité et reprise** : concevoir, tester et chronométrer un PCA/PRA (RTO, RPO, sauvegardes, restauration, reconstruction d'un cluster).
-- **Sécurité** : TLS et authentification, secrets, pare-feu au moindre privilège, durcissement SSH.
-- **Supervision et documentation** : contrôle de santé automatisé, procédures de test écrites et reproductibles.
+### ➔ Administrer et sécuriser les infrastructures systèmes
+
+- Installation et configuration de 6 VM Debian 13 : adressage fixe, résolution de noms, serveur NFS, comptes et droits (`sudo`, groupes).
+- Pare-feu `ufw` en refus par défaut, règles par rôle (manager, worker, NFS) restreintes au sous-réseau.
+- Accès SSH par clé uniquement, connexion root désactivée.
+- Sauvegardes horaires de la base, archive de l'état du cluster, procédure de restauration testée et chronométrée.
+
+### ➔ Administrer et sécuriser les infrastructures virtualisées
+
+- Cluster Docker Swarm de 5 nœuds sous VMware : managers, workers, réseau overlay, stacks, contraintes de placement, routing mesh.
+- Registry interne en HTTPS (CA locale) avec authentification ; identifiants transmis aux workers avec `--with-registry-auth`.
+- Secrets Swarm pour tous les mots de passe, jamais dans le dépôt ni en variable d'environnement.
+- Pannes simulées et résolues : conteneur, base, worker entier, manager (reprise avec `--force-new-cluster`), incident de base de tâches après coupure brutale, état réseau périmé d'un manager.
+
+### ➔ Concevoir une solution technique répondant à des besoins d'évolution de l'infrastructure
+
+- Architecture pensée pour la continuité : séparation managers / workers / stockage, réplicas Nginx et PHP, données persistantes sur NFS pour que tout conteneur puisse être replacé ailleurs.
+- PCA/PRA avec objectifs mesurés (RTO environ 24 s, RPO de 1 h au maximum).
+- Limites identifiées et assumées : base en basculement et non en cluster, 2 managers sans tolérance de panne, NFS en point unique de défaillance.
+- Pistes d'évolution documentées : 3 managers, MariaDB Galera, réplication hors cluster des sauvegardes, certificats d'une autorité reconnue.
+
+### ➔ Mettre en œuvre et optimiser la supervision des infrastructures
+
+- Script de contrôle de santé (nœuds, services, site sur chaque IP, registry, fraîcheur des sauvegardes) exécuté toutes les 5 minutes avec journal.
+- Optimisation de la sonde de sauvegarde : lecture de l'âge du dernier dump sur le NFS plutôt que des logs de service, instables par intermittence.
+- Pistes d'évolution : alertes automatiques, supervision par métriques (Prometheus, Grafana).
 
 ## 👤 Auteur
 
