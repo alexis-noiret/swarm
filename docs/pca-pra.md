@@ -32,6 +32,10 @@ Le service `ops_backup` (stack `ops`, [`stack/backup.yml`](../stack/backup.yml))
 
 Les dumps sont sur le NFS : `/srv/nfs/backups/dump-AAAA-MM-JJ_HHMMSS.sql.gz`. **RPO théorique : 1 heure.**
 
+![Sauvegardes sur le NFS](images/12-sauvegardes.png)
+*Un dump toutes les heures (environ 750 Ko chacun) et l'archive de l'état Swarm (accès restreint, root uniquement). Les noms sont en UTC, les horodatages de fichiers en heure locale.*
+
+
 ### État du cluster Swarm (manuel)
 
 À faire après chaque changement important de topologie, sur un manager :
@@ -84,44 +88,61 @@ curl -s http://192.168.109.11/ | grep -o "[0-9]* visites"
 | Durée de l'import seul | 0,67 s |
 | **RPO** | compteur à 14 570 avant la panne, 14 567 après : **3 visites perdues** (au plus 1 h en théorie) |
 
+**Seconde mesure, scriptée** : suppression à 13:33:50, base restaurée à 13:33:51, import de **0,39 s**. Le compteur passe de 14 798 à 14 761 : **37 visites perdues**, soit celles des 31 minutes écoulées depuis le dernier dump (13:02). Le RPO dépend donc du moment de la panne dans l'heure : de quelques secondes juste après un dump à 1 h juste avant le suivant.
+
+![Restauration](images/13-restauration-pra.png)
+*Avant : 14 798 visites. Suppression à 13:33:50, restauration à 13:33:51 (import en 0,39 s). Après : 14 761 visites.*
+
+
 ## Perte d'un manager
 
-Avec **2 managers**, le quorum Raft exige 2 voix sur 2 : si l'un tombe, le cluster **ne peut plus être piloté** (`docker node ls` répond « The swarm does not have a leader »). Les services déjà lancés continuent de tourner : le site reste disponible (à interroger sur l'IP d'un worker ou du manager restant).
+Avec **2 managers**, le quorum Raft exige 2 voix sur 2 : si l'un tombe, le cluster **ne peut plus être piloté**. Les services déjà lancés continuent de tourner : le site reste disponible (à interroger sur l'IP d'un worker).
+
+Scénario testé : `swarm-manager2` est coupé brutalement (VMware : *Power Off*). Sur le manager restant, `docker node ls` échoue d'abord par un dépassement de délai, puis répond « The swarm does not have a leader », alors que le site répond toujours `200`.
+
+![Cluster sans chef](images/14a-manager-perdu.png)
+*Sans manager2, manager1 n'a plus le quorum : « The swarm does not have a leader. Make sure more than half of the managers are online. »*
 
 ### Procédure de reprise
 
-Sur le manager restant (ici manager2) :
+Sur le manager restant (ici manager1) :
 
 ```bash
-docker swarm init --force-new-cluster --advertise-addr 192.168.109.13
-docker node ls          # le manager restant est Leader, les services sont intacts
+docker swarm init --force-new-cluster --advertise-addr 192.168.109.10
+docker node ls          # le manager restant est Leader, le manager perdu est Unknown, les services sont intacts
 ```
 
-Mesure : **32 secondes** entre la commande et un cluster de nouveau opérationnel, services intacts.
+Mesures : **13 secondes** (13:50:21 → 13:50:34) pour `--force-new-cluster` sur le dernier essai, 32 secondes (pause de 10 s comprise) sur le premier essai avec l'autre manager. Les services n'ont jamais été interrompus.
+
+![Reprise forcée](images/14b-reprise-forcee.png)
+*Reprise forcée : manager1 devient Leader, manager2 est `Unknown`. Le jeton de jonction des workers affiché par cette commande a été masqué sur la capture.*
+
+> **Sécurité** : `docker swarm init --force-new-cluster` affiche le jeton de jonction des workers. Ne jamais le copier dans un dépôt ni dans une capture d'écran, et le renouveler au besoin : `docker swarm join-token --rotate worker`.
 
 ### Réintégrer le manager perdu
 
+À lancer **une seule fois**, depuis le poste de travail ; le jeton de jonction passe d'une machine à l'autre sans jamais s'afficher :
+
 ```bash
-# Sur le manager réparé (ancien nœud)
-docker swarm leave --force
-
-# Sur le Leader : supprimer l'ancienne entrée puis récupérer le jeton manager
-docker node rm --force swarm-manager1
-docker swarm join-token manager
-
-# Sur le manager réparé : rejoindre
-docker swarm join --token <JETON> 192.168.109.13:2377
+ssh swarm-manager2 'docker swarm leave --force' || true
+ssh swarm-manager1 'docker node rm --force swarm-manager2' || true
+ssh swarm-manager1 'docker swarm join-token -q manager' | ssh swarm-manager2 'read T; docker swarm join --token "$T" 192.168.109.10:2377'
 ```
 
 Le manager réintégré reçoit un nouvel identifiant.
 
+![Manager réintégré](images/14c-manager-reintegre.png)
+*Après réintégration et redémarrage de Docker sur manager1 : 2 managers (manager2 Leader, manager1 Reachable), 3 workers `Ready`, site sur les 5 IP, `=> Tout est OK`.*
+
+**Ne pas rejouer ce bloc** une fois manager2 revenu : le second `leave` fait ressortir manager2 en le laissant déclaré comme membre manager (erreur « must be demoted to worker before removal »), et manager1 perd de nouveau son quorum. Il faut alors refaire une reprise forcée, puis réintégrer manager2.
+
 ### Piège rencontré : le routing mesh du manager récupéré
 
-Après le `--force-new-cluster`, le manager récupéré (manager2) ne répondait plus sur le port 80 : les paquets de son réseau overlay arrivaient bien sur les workers, mais ces derniers n'avaient pas son point d'entrée dans leur table VXLAN et ne pouvaient pas lui répondre. Ni le pare-feu ni la configuration n'étaient en cause.
+Après le `--force-new-cluster`, le manager récupéré ne répond plus sur le port 80 : les paquets de son réseau overlay arrivent bien sur les workers, mais ces derniers n'ont pas son point d'entrée dans leur table VXLAN et ne peuvent pas lui répondre. Ni le pare-feu ni la configuration ne sont en cause. Observé sur manager2 lors du premier essai, puis sur manager1 lors du second : le problème est donc systématique.
 
-Correctif : `sudo systemctl restart docker` sur ce manager (il se ré-annonce au cluster). Pendant ce redémarrage de 15 à 30 s, le cluster perd son quorum (2 managers), les services continuent de tourner.
+Correctif : `sudo systemctl restart docker` sur ce manager (il se ré-annonce au cluster). Pendant ce redémarrage de 20 à 40 s, le cluster perd son quorum (2 managers) et le Leader change ; les services continuent de tourner.
 
-**À retenir** : après un `--force-new-cluster`, tester le site sur chaque IP (`scripts/healthcheck.sh`) et redémarrer Docker sur le manager récupéré si besoin.
+**À retenir** : après un `--force-new-cluster`, tester le site sur chaque IP (`scripts/healthcheck.sh`) et redémarrer Docker sur le manager récupéré si une IP ne répond pas.
 
 ## Recommandations pour aller plus loin
 

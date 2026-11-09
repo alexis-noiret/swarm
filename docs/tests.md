@@ -45,6 +45,10 @@ watch -n 1 'docker service ps swarm_php'
 
 **Résultat mesuré** : conteneur recréé sur un autre worker en **4 à 6 secondes**, aucune requête perdue sur le site.
 
+![Test PHP](images/09-test-php-kill.png)
+*Tâche `Failed` (code 137) sur worker1, remplacée par une tâche `Running` sur worker2 six secondes plus tard.*
+
+
 ---
 
 ## Test 2 : perte du conteneur MariaDB
@@ -62,6 +66,16 @@ watch -n 1 'docker service ps swarm_db'
 **Résultat attendu** : la base est indisponible quelques secondes, puis revient avec les mêmes données (le compteur continue, il ne repart pas de zéro).
 
 **Résultat mesuré** : erreur de connexion pendant environ **5 secondes** (`getaddrinfo for db failed`, le temps que l'ancienne tâche disparaisse), retour à la normale en **moins de 30 secondes**, compteur de visites poursuivi (420 → 966 sur le test) : **aucune donnée perdue**.
+
+![Base tuée](images/10a-test-db-kill.png)
+*La tâche MariaDB de worker1 passe en `Failed`, sa remplaçante est planifiée sur worker2.*
+
+![Base revenue](images/10b-test-db-retour.png)
+*La nouvelle tâche est `Running` : la base a retrouvé ses données sur le NFS.*
+
+![Compteur de visites](images/10c-test-db-compteur.png)
+*Mesure chronométrée avec une requête par seconde : dernière réponse à 13:38:36 (14 798 visites), indisponibilité de 13:38:38 à 13:38:51 (environ 14 secondes), reprise à 13:38:52 avec 14 799 visites. Le compteur n'est pas reparti de zéro.*
+
 
 > Remarque : la base n'a qu'un réplica, c'est un basculement et non une vraie haute disponibilité (voir les limites dans le README).
 
@@ -87,6 +101,16 @@ scripts/healthcheck.sh
 
 **Résultat mesuré** : Nginx, PHP, code-server et la registry recréés sur worker3, site disponible tout le long.
 
+![Worker coupé](images/11-test-worker-coupe.png)
+*Seconde exécution : worker2 est `Down`, la base et PHP sont recréés sur worker1 (`Running` depuis 20 secondes).*
+
+![Supervision pendant la panne](images/18-healthcheck-ko.png)
+*Le script de supervision détecte la panne : nœud `Down`, IP muette, services en `2/1` et `3/2` (l'ancienne tâche est comptée tant que le nœud est `Down`).*
+
+![Worker revenu](images/11c-worker-retour.png)
+*Après le redémarrage de la VM : worker2 est de nouveau `Ready` et le script termine par `Tout est OK`.*
+
+
 **Remise en service** : rallumer la VM. Si Docker refuse de redémarrer après la coupure brutale (base de tâches du worker corrompue, observé une fois), voir « Incident » ci-dessous.
 
 ### Incident observé : Docker ne redémarre pas après une coupure brutale
@@ -108,6 +132,15 @@ Le worker reprend ses tâches depuis l'état du cluster, aucune donnée applicat
 
 Voir [`pca-pra.md`](pca-pra.md#perte-dun-manager) : ce scénario relève de la reprise du cluster et y est détaillé avec ses temps.
 
+![Cluster sans chef](images/14a-manager-perdu.png)
+*Manager2 coupé : manager1 ne peut plus piloter le cluster, le site reste disponible.*
+
+![Reprise forcée](images/14b-reprise-forcee.png)
+*Reprise avec `--force-new-cluster` (jeton masqué).*
+
+![Manager réintégré](images/14c-manager-reintegre.png)
+*Cluster complet de nouveau sain : `=> Tout est OK`.*
+
 ---
 
 ## Test 5 : restauration de la base (PRA)
@@ -123,5 +156,5 @@ Voir [`pca-pra.md`](pca-pra.md#restauration-de-la-base) : suppression volontaire
 | 1 | Conteneur PHP | aucune | aucune |
 | 2 | Conteneur MariaDB | environ 5 s côté appli, retour en moins de 30 s | aucune |
 | 3 | Worker entier | aucune sur le site | aucune |
-| 4 | Manager | aucune sur le site (cluster non pilotable jusqu'à la reprise, 32 s) | aucune |
+| 4 | Manager | aucune sur le site (cluster non pilotable jusqu'à la reprise, 13 à 32 s) | aucune |
 | 5 | Base supprimée | 24 s (restauration manuelle) | 3 visites (RPO) |

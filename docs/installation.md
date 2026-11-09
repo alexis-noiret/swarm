@@ -43,13 +43,19 @@ Installation depuis le dépôt officiel Docker sur les 5 nœuds du cluster (pas 
 sudo apt-get install -y nfs-kernel-server
 sudo mkdir -p /srv/nfs/{mariadb,registry,www,code,backups}
 sudo chown 999:999   /srv/nfs/mariadb     # utilisateur mariadb
-sudo chown 33:33     /srv/nfs/www         # www-data
+sudo chown 82:82     /srv/nfs/www         # www-data des images Alpine (php-fpm, nginx)
+sudo chmod 1777      /srv/nfs/www         # permissif en laboratoire ; 755 suffit en production
 sudo chown 1000:1000 /srv/nfs/code        # utilisateur coder
 echo '/srv/nfs 192.168.109.0/24(rw,sync,no_subtree_check,no_root_squash)' | sudo tee /etc/exports
 sudo exportfs -ra && sudo systemctl enable --now nfs-kernel-server
 ```
 
-Les UID correspondent aux utilisateurs internes de chaque image. Copier la page de test [`app/index.php`](../app/index.php) dans `/srv/nfs/www/`.
+Les UID correspondent aux utilisateurs internes de chaque image (le `www-data` des images Alpine a l'UID 82, pas 33 comme sur Debian). Résultat attendu :
+
+![Exports NFS](images/05-nfs.png)
+*Export du sous-réseau et propriétaires des dossiers : mariadb (999), www (82), code (1000).*
+
+Copier ensuite la page de test [`app/index.php`](../app/index.php) dans `/srv/nfs/www/`.
 
 ## 4. Le cluster
 
@@ -64,7 +70,12 @@ docker node ls                       # 2 managers + 3 workers
 
 ## 5. Secrets
 
-Trois mots de passe aléatoires créés directement dans Swarm (jamais dans un fichier versionné) :
+Trois mots de passe aléatoires sont créés directement dans Swarm (jamais dans un fichier versionné). Résultat final :
+
+![Secrets](images/06-secrets.png)
+*`docker secret ls` : les trois secrets applicatifs et les trois éléments TLS de la registry (le contenu n'est jamais affiché).*
+
+Les commandes de création :
 
 ```bash
 for s in db_root_password db_app_password code_password; do

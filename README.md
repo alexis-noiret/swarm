@@ -83,6 +83,19 @@
 
 Service complémentaire : `ops_backup` réalise un dump MariaDB compressé toutes les heures vers le NFS.
 
+![Nœuds du cluster](docs/images/01-cluster-noeuds.png)
+*Le cluster : 2 managers (manager1 Leader, manager2 Reachable) et 3 workers, tous `Ready`.*
+
+![Services et stacks](docs/images/02-services-stacks.png)
+*Les 6 services et 4 stacks, réplicas au complet.*
+
+![Page de test](docs/images/03-site.png)
+*La page de test : nom du conteneur PHP qui répond et compteur de visites stocké dans MariaDB.*
+
+![VSCode Server](docs/images/04-vscode-server.png)
+*VSCode Server (code-server) accessible sur le port 8443.*
+
+
 ## 🚀 Démarrage rapide
 
 Le détail pas à pas est dans [`docs/installation.md`](docs/installation.md). En résumé, depuis `swarm-manager1` :
@@ -113,7 +126,23 @@ Résultats mesurés, détaillés dans [`docs/tests.md`](docs/tests.md) :
 | 1 | Perte d'un conteneur PHP (`docker kill`) | Recréé sur un autre worker en 4 à 6 s, site disponible |
 | 2 | Perte du conteneur MariaDB | Indisponibilité d'environ 5 s côté appli, retour complet en moins de 30 s, aucune donnée perdue |
 | 3 | Coupure brutale d'un worker entier | Services recréés sur les autres workers, site disponible |
-| 4 | Perte d'un manager | Site disponible, cluster récupéré en 32 s avec `--force-new-cluster` |
+| 4 | Perte d'un manager | Site disponible, cluster repris en 13 à 32 s avec `--force-new-cluster` (voir [`pca-pra.md`](docs/pca-pra.md#perte-dun-manager)) |
+
+![Test conteneur PHP](docs/images/09-test-php-kill.png)
+*Test 1 : le conteneur PHP tué (code 137) est remplacé sur worker2 en environ 6 secondes.*
+
+![Test base de données](docs/images/10a-test-db-kill.png)
+*Test 2 : la base tuée est replanifiée sur un autre worker.*
+
+![Retour de la base](docs/images/10b-test-db-retour.png)
+*Test 2 : la base est de nouveau `Running`, ses données sont sur le NFS.*
+
+![Compteur de visites](docs/images/10c-test-db-compteur.png)
+*Test 2 : une requête par seconde. Le compteur monte jusqu'à 14 798, la base est indisponible environ 14 s, puis le compteur reprend à 14 799 : aucune donnée perdue.*
+
+![Test worker coupé](docs/images/11-test-worker-coupe.png)
+*Test 3 : worker2 coupé brutalement (`Down`), ses tâches sont recréées sur worker1.*
+
 
 ## 🔁 PCA / PRA
 
@@ -127,6 +156,13 @@ Résultats mesurés, détaillés dans [`docs/tests.md`](docs/tests.md) :
 
 Procédures complètes : [`docs/pca-pra.md`](docs/pca-pra.md).
 
+![Sauvegardes](docs/images/12-sauvegardes.png)
+*Un dump compressé par heure sur le NFS, plus l'archive de l'état Swarm.*
+
+![Restauration](docs/images/13-restauration-pra.png)
+*Restauration : base supprimée à 13:33:50, restaurée à 13:33:51 (import en 0,39 s), 37 visites perdues (RPO).*
+
+
 ## 🔒 Sécurité
 
 - **Registry** en HTTPS (CA locale) avec authentification ; les workers reçoivent les identifiants avec `--with-registry-auth`.
@@ -135,9 +171,38 @@ Procédures complètes : [`docs/pca-pra.md`](docs/pca-pra.md).
 - **SSH** par clé uniquement, connexion root et mots de passe désactivés.
 - Moindre privilège : 2377/tcp (gestion du cluster) n'est ouvert que sur les managers.
 
+![Secrets Swarm](docs/images/06-secrets.png)
+*Les secrets Swarm : mots de passe de la base, de code-server et éléments TLS de la registry.*
+
+![Registry en HTTPS](docs/images/07-registry-tls.png)
+*Registry : HTTP refusé, HTTPS sans mot de passe refusé (401), HTTPS authentifié accepté (200).*
+
+![Pull refusé](docs/images/08-registry-refus.png)
+*Sans identifiants, le `docker pull` est refusé ; la reconnexion fonctionne.*
+
+![Pare-feu manager](docs/images/15a-ufw-manager.png)
+*Pare-feu d'un manager : 2377/tcp ouvert uniquement depuis le sous-réseau.*
+
+![Pare-feu worker](docs/images/15b-ufw-worker.png)
+*Pare-feu d'un worker : pas de 2377 (moindre privilège).*
+
+![SSH sans clé](docs/images/16-ssh-sans-cle.png)
+*SSH sans la clé : `Permission denied (publickey)`.*
+
+
 ## 📊 Supervision
 
 [`scripts/healthcheck.sh`](scripts/healthcheck.sh) vérifie en une commande l'état des nœuds, des services, du site sur chaque IP, de la registry et de la fraîcheur des sauvegardes. La fraîcheur des sauvegardes est lue directement sur le NFS (montage en lecture seule). Il tourne toutes les 5 minutes via `cron` et écrit dans un journal.
+
+![Supervision OK](docs/images/17-healthcheck-ok.png)
+*Cluster sain : tous les contrôles sont `[OK]`.*
+
+![Supervision KO](docs/images/18-healthcheck-ko.png)
+*Pendant la panne de worker2 : le script détecte le nœud `Down`, l'IP muette et les services en transition.*
+
+![Journal](docs/images/19-journal-supervision.png)
+*Le journal cron : un bilan toutes les 5 minutes, avec le `[KO]` de 13:10 (panne de worker2) puis le retour à `Tout est OK`.*
+
 
 ## ⚠️ Limites assumées
 
@@ -169,7 +234,8 @@ swarm/
 └── docs/
     ├── installation.md
     ├── tests.md
-    └── pca-pra.md
+    ├── pca-pra.md
+    └── images/             # captures d'écran
 ```
 
 ## 🎓 Compétences démontrées
