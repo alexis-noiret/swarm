@@ -150,10 +150,16 @@ Les tests ci-dessus ont montré qu'avec **2 managers** la perte d'un seul suffit
 
 Ajout du nœud : clone de worker3 avec carte réseau déconnectée au premier démarrage, puis nouvelle identité (nom, IP, `machine-id`, clés SSH de l'hôte, état Swarm effacé), pare-feu `firewall.sh manager`, jonction avec `docker swarm join --token <jeton manager>` (jeton passé par ssh, sans l'afficher). Détail dans [`installation.md`](installation.md).
 
-![Cluster à 3 managers](images/20c-manager-revenu.png)
+![Cluster à 3 managers](images/20a-trois-managers.png)
 *Cluster à 3 managers (manager1 Leader, manager2 et manager3 Reachable), 3 workers `Ready`, site sur les 6 IP, `=> Tout est OK`.*
 
 **Test** : manager2 est éteint (`poweroff`). Sur manager1, `docker node ls` répond (manager2 `Down / Unreachable`, manager1 reste Leader), le site renvoie `200` sur manager3 et `docker service scale swarm_php=3` aboutit. Au redémarrage, manager2 redevient `Reachable` **sans aucune manipulation** (aucun `--force-new-cluster`, aucun redémarrage de Docker).
+
+![Manager2 coupé, cluster pilotable](images/20b-manager-coupe-ha.png)
+*Manager2 éteint : `Down / Unreachable`, mais `docker node ls` répond, le site renvoie 200 et `swarm_php` passe à 3 réplicas puis revient à 2.*
+
+![Manager2 revenu](images/20c-manager-revenu.png)
+*Manager2 rallumé : `Reachable` tout seul, `=> Tout est OK`.*
 
 | | 2 managers | 3 managers |
 | --- | --- | --- |

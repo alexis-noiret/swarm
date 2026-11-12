@@ -207,6 +207,9 @@ Procédures complètes : [`docs/pca-pra.md`](docs/pca-pra.md).
 *Le journal cron : un bilan toutes les 5 minutes, avec le `[KO]` de 13:10 (panne de worker2) puis le retour à `Tout est OK`.*
 
 
+![Haute disponibilité des managers](docs/images/20b-manager-coupe-ha.png)
+*Test 6 : avec 3 managers, manager2 éteint, le cluster reste pilotable et le site répond.*
+
 ## ⚠️ Limites assumées
 
 - **MariaDB** n'est pas en haute disponibilité au sens strict : un seul réplica, relancé automatiquement ailleurs (basculement). Un cluster Galera à 3 nœuds serait l'étape suivante.

@@ -153,6 +153,9 @@ Voir [`pca-pra.md`](pca-pra.md#restauration-de-la-base) : suppression volontaire
 
 Après l'ajout de `swarm-manager3`, manager2 est éteint brutalement : le cluster reste pilotable sans reprise manuelle (voir [`pca-pra.md`](pca-pra.md#haute-disponibilité-des-managers-3-managers)).
 
+![Manager2 coupé](images/20b-manager-coupe-ha.png)
+*Manager2 éteint : cluster toujours pilotable, site en 200, `scale` accepté.*
+
 ```bash
 ssh -t swarm-manager2 'sudo poweroff'; sleep 25
 ssh swarm-manager1 'docker node ls'                       # répond : manager2 Unreachable
