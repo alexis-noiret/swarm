@@ -161,6 +161,14 @@ Ajout du nœud : clone de worker3 avec carte réseau déconnectée au premier d�
 ![Manager2 revenu](images/20c-manager-revenu.png)
 *Manager2 rallumé : `Reachable` tout seul, `=> Tout est OK`.*
 
+**Test du Leader** : manager1, qui était Leader, est éteint à son tour. En moins de 25 s, **manager3 est élu Leader** automatiquement ; le site reste en `200` sur les 5 requêtes et `docker service scale swarm_php=3` aboutit depuis manager3. Au redémarrage, manager1 revient `Reachable` tout seul et manager3 reste Leader (pas de bascule inutile).
+
+![Leader coupé](images/21a-leader-coupe.png)
+*Manager1 (Leader) éteint : manager3 élu Leader, site en 200, `swarm_php` passe à 3 réplicas puis revient à 2.*
+
+![Leader revenu](images/21b-leader-revenu.png)
+*Manager1 rallumé : `Reachable`, manager3 reste `Leader`, `=> Tout est OK`.*
+
 | | 2 managers | 3 managers |
 | --- | --- | --- |
 | Quorum Raft | 2 sur 2 | 2 sur 3 |

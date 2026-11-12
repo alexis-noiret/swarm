@@ -168,6 +168,24 @@ ssh swarm-manager1 'docker service scale swarm_php=3'     # aboutit
 
 ---
 
+## Test 7 : perte du Leader (3 managers)
+
+Même scénario, mais en éteignant manager1, qui est Leader : une élection Raft désigne un nouveau Leader sans intervention (voir [`pca-pra.md`](pca-pra.md#haute-disponibilité-des-managers-3-managers)).
+
+```bash
+ssh -t swarm-manager1 'sudo poweroff'; sleep 25
+ssh swarm-manager3 'docker node ls'     # manager1 Unreachable, manager3 Leader
+ssh swarm-manager3 'docker service scale swarm_php=3'
+```
+
+![Leader coupé](images/21a-leader-coupe.png)
+*Manager3 élu Leader en moins de 25 s, site en 200, `scale` accepté.*
+
+![Leader revenu](images/21b-leader-revenu.png)
+*Manager1 de retour `Reachable`, manager3 reste Leader, `=> Tout est OK`.*
+
+---
+
 ## Tableau récapitulatif
 
 | Test | Panne simulée | Interruption observée | Données perdues |
@@ -178,3 +196,4 @@ ssh swarm-manager1 'docker service scale swarm_php=3'     # aboutit
 | 4 | Manager | aucune sur le site (cluster non pilotable jusqu'à la reprise, 13 à 32 s) | aucune |
 | 5 | Base supprimée | 24 s (restauration manuelle) | 3 visites (RPO) |
 | 6 | Manager (avec 3 managers) | aucune, cluster toujours pilotable | aucune |
+| 7 | Leader (avec 3 managers) | aucune, nouveau Leader en moins de 25 s | aucune |

@@ -130,6 +130,7 @@ Résultats mesurés, détaillés dans [`docs/tests.md`](docs/tests.md) :
 | 3 | Coupure brutale d'un worker entier | Services recréés sur les autres workers, site disponible |
 | 4 | Perte d'un manager (2 managers) | Site disponible, cluster non pilotable : repris en 13 à 32 s avec `--force-new-cluster` (voir [`pca-pra.md`](docs/pca-pra.md#perte-dun-manager)) |
 | 6 | Perte d'un manager (3 managers) | Cluster **toujours pilotable**, aucune reprise manuelle, retour automatique du manager (voir [`pca-pra.md`](docs/pca-pra.md#haute-disponibilité-des-managers-3-managers)) |
+| 7 | Perte du Leader (3 managers) | Nouveau Leader élu en moins de 25 s, cluster pilotable, site disponible, retour automatique de l'ancien Leader |
 
 ![Test conteneur PHP](docs/images/09-test-php-kill.png)
 *Test 1 : le conteneur PHP tué (code 137) est remplacé sur worker2 en environ 6 secondes.*
