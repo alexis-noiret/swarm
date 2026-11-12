@@ -10,6 +10,7 @@ Procédure de reconstruction complète. Les valeurs (IP, noms) sont celles du la
 | --- | --- |
 | swarm-manager1 | 192.168.109.10 |
 | swarm-manager2 | 192.168.109.13 |
+| swarm-manager3 | 192.168.109.15 |
 | swarm-worker1 | 192.168.109.11 |
 | swarm-worker2 | 192.168.109.12 |
 | swarm-worker3 | 192.168.109.14 |
@@ -64,9 +65,37 @@ Sur manager1 :
 ```bash
 docker swarm init --advertise-addr 192.168.109.10
 docker swarm join-token worker       # à exécuter sur les 3 workers
-docker swarm join-token manager      # à exécuter sur manager2
-docker node ls                       # 2 managers + 3 workers
+docker swarm join-token manager      # à exécuter sur manager2 et manager3
+docker node ls                       # 3 managers + 3 workers
 ```
+
+### Ajouter un troisième manager (haute disponibilité)
+
+Avec 2 managers, la perte d'un seul rend le cluster non pilotable. Un troisième manager (`swarm-manager3`, 192.168.109.15) porte le quorum à 2 sur 3. Il doit être une **nouvelle VM** : les services ont la contrainte `node.role == worker`, donc promouvoir un worker retirerait un nœud d'exécution.
+
+1. Cloner une VM worker (clone complet) et **décocher « Connected at power on »** pour la carte réseau avant le premier démarrage (sinon conflit d'IP et d'identité Swarm).
+2. Sur la console du clone : arrêter Docker, effacer l'état Swarm, changer le nom, le `machine-id` et les clés SSH de l'hôte, puis passer l'IP à .15 dans `/etc/network/interfaces` et corriger `/etc/hosts` :
+
+```bash
+sudo systemctl stop docker docker.socket
+sudo rm -rf /var/lib/docker/swarm
+sudo hostnamectl set-hostname swarm-manager3
+sudo rm -f /etc/machine-id /var/lib/dbus/machine-id && sudo systemd-machine-id-setup
+sudo rm -f /etc/ssh/ssh_host_* && sudo ssh-keygen -A
+sudo sed -i 's#address 192.168.109.14/24#address 192.168.109.15/24#' /etc/network/interfaces
+sudo reboot
+```
+
+3. Reconnecter la carte réseau, ajouter `192.168.109.15 swarm-manager3` dans `/etc/hosts` et dans `~/.ssh/config`, puis appliquer `scripts/firewall.sh manager`.
+4. Rejoindre le cluster, depuis le poste de travail (le jeton ne s'affiche pas) :
+
+```bash
+ssh -t swarm-manager3 'sudo systemctl start docker && docker container prune -f'
+ssh swarm-manager1 'docker swarm join-token -q manager' | ssh swarm-manager3 'read T; docker swarm join --token "$T" 192.168.109.10:2377'
+ssh swarm-manager1 'docker node ls'     # 3 managers + 3 workers
+```
+
+5. Ajouter `192.168.109.15` à la liste `NODES` de `scripts/healthcheck.sh`.
 
 ## 5. Secrets
 

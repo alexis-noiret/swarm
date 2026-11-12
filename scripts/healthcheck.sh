@@ -1,6 +1,6 @@
 #!/bin/bash
 # healthcheck.sh - contrôle de santé du cluster Swarm (à lancer sur un manager)
-NODES="192.168.109.10 192.168.109.11 192.168.109.12 192.168.109.13 192.168.109.14"
+NODES="192.168.109.10 192.168.109.11 192.168.109.12 192.168.109.13 192.168.109.14 192.168.109.15"
 KO=0
 ok() { printf "  [OK] %s\n" "$1"; }
 ko() { printf "  [KO] %s\n" "$1"; KO=$((KO+1)); }

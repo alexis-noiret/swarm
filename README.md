@@ -6,7 +6,7 @@
 ![Projet](https://img.shields.io/badge/Projet-La_Plateforme-6e40c9)
 ![Focus](https://img.shields.io/badge/Focus-PCA_%2F_PRA-2ea44f)
 
-> Un cluster Docker Swarm de 5 nœuds (2 managers, 3 workers) sur des VM Debian, avec cinq services conteneurisés, un Plan de Continuité d'Activité (PCA) testé et un Plan de Reprise d'Activité (PRA) chronométré.
+> Un cluster Docker Swarm de 6 nœuds (3 managers, 3 workers) sur des VM Debian, avec cinq services conteneurisés, un Plan de Continuité d'Activité (PCA) testé et un Plan de Reprise d'Activité (PRA) chronométré.
 
 ## 🖥️ Environnement
 
@@ -22,6 +22,7 @@
 | --- | --- | --- |
 | swarm-manager1 | 192.168.109.10 | manager |
 | swarm-manager2 | 192.168.109.13 | manager |
+| swarm-manager3 | 192.168.109.15 | manager |
 | swarm-worker1 | 192.168.109.11 | worker |
 | swarm-worker2 | 192.168.109.12 | worker |
 | swarm-worker3 | 192.168.109.14 | worker |
@@ -49,12 +50,13 @@
         ┌───────────────────┼───────────────────┐
         │        Réseau NAT 192.168.109.0/24    │
         │                                       │
-  ┌─────┴──────┐  ┌────────────┐   ┌───────────┴──────────────────────┐
-  │ manager1   │  │ manager2   │   │ worker1   worker2   worker3      │
-  │ .10        │  │ .13        │   │ .11       .12       .14          │
-  │ (Raft)     │  │ (Raft)     │   │ nginx x2 · php x2 · mariadb      │
-  └────────────┘  └────────────┘   │ registry · code-server · backup  │
-                                   └───────────────┬──────────────────┘
+  ┌─────┴──────┐  ┌────────────┐  ┌────────────┐   ┌─────────────────────────┐
+  │ manager1   │  │ manager2   │  │ manager3   │   │ worker1 worker2 worker3 │
+  │ .10        │  │ .13        │  │ .15        │   │ .11     .12     .14     │
+  │ (Raft)     │  │ (Raft)     │  │ (Raft)     │   │ nginx x2 · php x2       │
+  └────────────┘  └────────────┘  └────────────┘   │ mariadb · registry      │
+                                                   │ code-server · backup    │
+                                                   └───────────┬─────────────┘
                                                    │ NFSv4
                                             ┌──────┴──────┐
                                             │ swarm-nfs   │
@@ -84,7 +86,7 @@
 Service complémentaire : `ops_backup` réalise un dump MariaDB compressé toutes les heures vers le NFS.
 
 ![Nœuds du cluster](docs/images/01-cluster-noeuds.png)
-*Le cluster : 2 managers (manager1 Leader, manager2 Reachable) et 3 workers, tous `Ready`.*
+*Le cluster : 2 managers (manager1 Leader, manager2 Reachable) et 3 workers, tous `Ready` (état avant l'ajout de manager3).*
 
 ![Services et stacks](docs/images/02-services-stacks.png)
 *Les 6 services et 4 stacks, réplicas au complet.*
@@ -126,7 +128,8 @@ Résultats mesurés, détaillés dans [`docs/tests.md`](docs/tests.md) :
 | 1 | Perte d'un conteneur PHP (`docker kill`) | Recréé sur un autre worker en 4 à 6 s, site disponible |
 | 2 | Perte du conteneur MariaDB | Indisponibilité d'environ 5 s côté appli, retour complet en moins de 30 s, aucune donnée perdue |
 | 3 | Coupure brutale d'un worker entier | Services recréés sur les autres workers, site disponible |
-| 4 | Perte d'un manager | Site disponible, cluster repris en 13 à 32 s avec `--force-new-cluster` (voir [`pca-pra.md`](docs/pca-pra.md#perte-dun-manager)) |
+| 4 | Perte d'un manager (2 managers) | Site disponible, cluster non pilotable : repris en 13 à 32 s avec `--force-new-cluster` (voir [`pca-pra.md`](docs/pca-pra.md#perte-dun-manager)) |
+| 6 | Perte d'un manager (3 managers) | Cluster **toujours pilotable**, aucune reprise manuelle, retour automatique du manager (voir [`pca-pra.md`](docs/pca-pra.md#haute-disponibilité-des-managers-3-managers)) |
 
 ![Test conteneur PHP](docs/images/09-test-php-kill.png)
 *Test 1 : le conteneur PHP tué (code 137) est remplacé sur worker2 en environ 6 secondes.*
@@ -207,7 +210,7 @@ Procédures complètes : [`docs/pca-pra.md`](docs/pca-pra.md).
 ## ⚠️ Limites assumées
 
 - **MariaDB** n'est pas en haute disponibilité au sens strict : un seul réplica, relancé automatiquement ailleurs (basculement). Un cluster Galera à 3 nœuds serait l'étape suivante.
-- **Deux managers** ne tolèrent aucune panne sans intervention (le quorum Raft exige la majorité) : trois managers sont recommandés en production.
+- **Trois managers** tolèrent la perte d'un seul manager (quorum 2 sur 3) ; deux pannes simultanées exigeraient une reprise forcée. Cinq managers en tolèreraient deux.
 - Le **serveur NFS** est un point de défaillance unique.
 - La **registry** utilise une CA auto-signée (laboratoire) et le mot de passe de connexion est stocké en clair dans `~/.docker/config.json` du manager.
 - Docker publie les ports 80, 5000 et 8443 en contournant `ufw` ; en production, on filtrerait via la chaîne `DOCKER-USER`.
@@ -249,7 +252,7 @@ swarm/
 
 ### ➔ Administrer et sécuriser les infrastructures virtualisées
 
-- Cluster Docker Swarm de 5 nœuds sous VMware : managers, workers, réseau overlay, stacks, contraintes de placement, routing mesh.
+- Cluster Docker Swarm de 6 nœuds sous VMware : managers, workers, réseau overlay, stacks, contraintes de placement, routing mesh.
 - Registry interne en HTTPS (CA locale) avec authentification ; identifiants transmis aux workers avec `--with-registry-auth`.
 - Secrets Swarm pour tous les mots de passe, jamais dans le dépôt ni en variable d'environnement.
 - Pannes simulées et résolues : conteneur, base, worker entier, manager (reprise avec `--force-new-cluster`), incident de base de tâches après coupure brutale, état réseau périmé d'un manager.
@@ -258,7 +261,7 @@ swarm/
 
 - Architecture pensée pour la continuité : séparation managers / workers / stockage, réplicas Nginx et PHP, données persistantes sur NFS pour que tout conteneur puisse être replacé ailleurs.
 - PCA/PRA avec objectifs mesurés (RTO environ 24 s, RPO de 1 h au maximum).
-- Limites identifiées et assumées : base en basculement et non en cluster, 2 managers sans tolérance de panne, NFS en point unique de défaillance.
+- Limites identifiées et assumées : base en basculement et non en cluster, 3 managers (une seule panne de manager tolérée), NFS en point unique de défaillance.
 - Pistes d'évolution documentées : 3 managers, MariaDB Galera, réplication hors cluster des sauvegardes, certificats d'une autorité reconnue.
 
 ### ➔ Mettre en œuvre et optimiser la supervision des infrastructures

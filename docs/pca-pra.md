@@ -96,7 +96,7 @@ curl -s http://192.168.109.11/ | grep -o "[0-9]* visites"
 
 ## Perte d'un manager
 
-Avec **2 managers**, le quorum Raft exige 2 voix sur 2 : si l'un tombe, le cluster **ne peut plus être piloté**. Les services déjà lancés continuent de tourner : le site reste disponible (à interroger sur l'IP d'un worker).
+Avec **2 managers** (configuration initiale du projet, avant l'ajout de manager3), le quorum Raft exige 2 voix sur 2 : si l'un tombe, le cluster **ne peut plus être piloté**. Les services déjà lancés continuent de tourner : le site reste disponible (à interroger sur l'IP d'un worker).
 
 Scénario testé : `swarm-manager2` est coupé brutalement (VMware : *Power Off*). Sur le manager restant, `docker node ls` échoue d'abord par un dépassement de délai, puis répond « The swarm does not have a leader », alors que le site répond toujours `200`.
 
@@ -144,9 +144,28 @@ Correctif : `sudo systemctl restart docker` sur ce manager (il se ré-annonce au
 
 **À retenir** : après un `--force-new-cluster`, tester le site sur chaque IP (`scripts/healthcheck.sh`) et redémarrer Docker sur le manager récupéré si une IP ne répond pas.
 
+## Haute disponibilité des managers (3 managers)
+
+Les tests ci-dessus ont montré qu'avec **2 managers** la perte d'un seul suffit à rendre le cluster non pilotable. Un troisième manager, `swarm-manager3` (192.168.109.15), a donc été ajouté : le quorum Raft devient **2 sur 3** et le cluster tolère la perte d'un manager sans reprise manuelle.
+
+Ajout du nœud : clone de worker3 avec carte réseau déconnectée au premier démarrage, puis nouvelle identité (nom, IP, `machine-id`, clés SSH de l'hôte, état Swarm effacé), pare-feu `firewall.sh manager`, jonction avec `docker swarm join --token <jeton manager>` (jeton passé par ssh, sans l'afficher). Détail dans [`installation.md`](installation.md).
+
+![Cluster à 3 managers](images/20c-manager-revenu.png)
+*Cluster à 3 managers (manager1 Leader, manager2 et manager3 Reachable), 3 workers `Ready`, site sur les 6 IP, `=> Tout est OK`.*
+
+**Test** : manager2 est éteint (`poweroff`). Sur manager1, `docker node ls` répond (manager2 `Down / Unreachable`, manager1 reste Leader), le site renvoie `200` sur manager3 et `docker service scale swarm_php=3` aboutit. Au redémarrage, manager2 redevient `Reachable` **sans aucune manipulation** (aucun `--force-new-cluster`, aucun redémarrage de Docker).
+
+| | 2 managers | 3 managers |
+| --- | --- | --- |
+| Quorum Raft | 2 sur 2 | 2 sur 3 |
+| Panne d'un manager | cluster non pilotable, reprise forcée (13 à 32 s) | cluster pilotable, aucune intervention |
+| Retour du manager | réintégration manuelle + redémarrage de Docker | automatique |
+
+Limite : deux managers perdus en même temps font retomber le cluster sous le quorum ; la procédure de reprise forcée ci-dessus s'applique alors.
+
 ## Recommandations pour aller plus loin
 
-- Passer à **3 managers** (tolère la perte d'un manager sans intervention).
+- Passer à **5 managers** pour tolérer deux pannes simultanées, si le besoin existe.
 - **MariaDB Galera** à 3 nœuds pour une vraie haute disponibilité de la base.
 - Répliquer le NFS ou ses sauvegardes hors du cluster.
 - Alertes automatiques à partir de `healthcheck.sh` (mail, webhook).

@@ -149,6 +149,22 @@ Voir [`pca-pra.md`](pca-pra.md#restauration-de-la-base) : suppression volontaire
 
 ---
 
+## Test 6 : perte d'un manager avec 3 managers (haute disponibilité)
+
+Après l'ajout de `swarm-manager3`, manager2 est éteint brutalement : le cluster reste pilotable sans reprise manuelle (voir [`pca-pra.md`](pca-pra.md#haute-disponibilité-des-managers-3-managers)).
+
+```bash
+ssh -t swarm-manager2 'sudo poweroff'; sleep 25
+ssh swarm-manager1 'docker node ls'                       # répond : manager2 Unreachable
+curl -s -o /dev/null -w '%{http_code}\n' http://192.168.109.15/   # 200
+ssh swarm-manager1 'docker service scale swarm_php=3'     # aboutit
+```
+
+![Manager revenu](images/20c-manager-revenu.png)
+*Manager2 rallumé : il est revenu `Reachable` tout seul, `=> Tout est OK`.*
+
+---
+
 ## Tableau récapitulatif
 
 | Test | Panne simulée | Interruption observée | Données perdues |
@@ -158,3 +174,4 @@ Voir [`pca-pra.md`](pca-pra.md#restauration-de-la-base) : suppression volontaire
 | 3 | Worker entier | aucune sur le site | aucune |
 | 4 | Manager | aucune sur le site (cluster non pilotable jusqu'à la reprise, 13 à 32 s) | aucune |
 | 5 | Base supprimée | 24 s (restauration manuelle) | 3 visites (RPO) |
+| 6 | Manager (avec 3 managers) | aucune, cluster toujours pilotable | aucune |
